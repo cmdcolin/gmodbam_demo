@@ -61,7 +61,7 @@ function App() {
         const s = r.get("start");
         const e = r.get("end");
         for (let i = s - start; i < e - start; i++) {
-          if (i > 0 && i < end - start) vals[i]++;
+          if (i >= 0 && i < end - start) vals[i]++;
         }
       });
       setMPileupData(vals);
