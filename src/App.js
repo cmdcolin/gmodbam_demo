@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BamFile } from "@gmod/bam";
-import { RemoteFile } from "generic-filehandle";
+import { RemoteFile, BlobFile } from "generic-filehandle";
 import GranularRectLayout from "./layout";
 import { StringParam, useQueryParams, withDefault } from "use-query-params";
 
@@ -33,6 +33,7 @@ const initialFile =
 
 function App() {
   const ref = useRef();
+  const fileRef = useRef();
   const snpcovref = useRef();
   const [params, setParams] = useQueryParams({
     loc: withDefault(StringParam, initialLoc),
@@ -44,29 +45,45 @@ function App() {
   const [loc, setLoc] = useState(params.loc);
   const [error, setError] = useState();
   const forceUpdate = useForceUpdate();
+  const [files, setFiles] = useState();
 
   useEffect(() => {
     (async () => {
-      const bam = new BamFile({
-        bamFilehandle: new RemoteFile(params.file),
-        baiFilehandle: new RemoteFile(params.file + ".bai"),
-      });
+      let bam;
+      if (files) {
+        let bamIdx =
+          files[0].name.endsWith("bam") || files[0].name.endsWith("cram")
+            ? 0
+            : 1;
+
+        bam = new BamFile({
+          bamFilehandle: new BlobFile(files[bamIdx]),
+          baiFilehandle: new BlobFile(files[Number(!bamIdx)]),
+        });
+      } else {
+        bam = new BamFile({
+          bamFilehandle: new RemoteFile(params.file),
+          baiFilehandle: new RemoteFile(params.file + ".bai"),
+        });
+      }
       await bam.getHeader();
       const { refName, start, end } = parseLocString(params.loc);
       var records = await bam.getRecordsForRange(refName, start - 1, end);
       setReadData(records);
 
       const vals = new Array(end - start).fill(0);
-      records.forEach((r) => {
-        const s = r.get("start");
-        const e = r.get("end");
-        for (let i = s - start; i < e - start; i++) {
-          if (i >= 0 && i < end - start) vals[i]++;
-        }
-      });
+      records
+        .filter((f) => !(f.flags & 4) && !(f.flags & 256))
+        .forEach((r) => {
+          const s = r.get("start");
+          const e = r.get("end");
+          for (let i = s - start; i < e - start; i++) {
+            if (i >= 0 && i < end - start) vals[i]++;
+          }
+        });
       setMPileupData(vals);
     })();
-  }, [params.file, params.loc]);
+  }, [params.file, params.loc, files]);
 
   // this block draws the rectangles
   useEffect(() => {
@@ -75,28 +92,25 @@ function App() {
     const parsedLoc = parseLocString(params.loc);
     const bpPerPx = width / (parsedLoc.end - parsedLoc.start);
     const layout = new GranularRectLayout();
-    if (readData && !readData.stdout) {
-      setError(readData.stderr);
-    }
-    readData
-      ?.filter((f) => !!f)
-      .forEach((feature) => {
-        const start = feature.get("start");
-        const end = feature.get("end");
-        const flags = feature.flags;
+    readData?.forEach((feature) => {
+      const start = feature.get("start");
+      const end = feature.get("end");
+      const flags = feature.flags;
 
-        if (flags & 16) {
-          ctx.fillStyle = "#f99";
-        } else {
-          ctx.fillStyle = "#99f";
-        }
+      if (flags & 16) {
+        ctx.fillStyle = "#99f";
+      } else {
+        ctx.fillStyle = "#f99";
+      }
 
-        const leftPx = (start - parsedLoc.start) * bpPerPx;
-        const width = (end - start) * bpPerPx;
-        const y = layout.addRect(feature.id(), start, end, featHeight);
+      const leftPx = (start - parsedLoc.start) * bpPerPx;
+      const width = (end - start) * bpPerPx;
 
-        ctx.fillRect(leftPx, y, width, featHeight);
-      });
+      console.log(feature.get("name"), feature.id());
+      const y = layout.addRect(feature.id(), start, end, featHeight);
+
+      ctx.fillRect(leftPx, y, width, featHeight);
+    });
   }, [readData, params.loc]);
 
   // this block draws the rectangles
@@ -132,6 +146,9 @@ function App() {
       <form
         onSubmit={(event) => {
           setParams({ file, loc });
+          if (fileRef.current.files.length) {
+            setFiles(fileRef.current.files);
+          }
           setMPileupData();
           setReadData();
           setError();
@@ -147,6 +164,10 @@ function App() {
           style={{ minWidth: "75%" }}
           onChange={(event) => setFile(event.target.value)}
         />
+
+        <br />
+        <label htmlFor="file">File (import both BAM and BAI): </label>
+        <input id="file" ref={fileRef} type="file" multiple />
 
         <br />
         <label htmlFor="loc">Location: </label>
