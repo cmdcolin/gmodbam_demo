@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BamFile } from "@gmod/bam";
+import { BamFile, BamRecord } from "@gmod/bam";
 import { RemoteFile, BlobFile } from "generic-filehandle";
 import GranularRectLayout from "./layout";
 import { StringParam, useQueryParams, withDefault } from "use-query-params";
 
-function parseLocString(locString) {
+function parseLocString(locString: string) {
   const [refName, rest] = locString.split(":");
   const [start, end] = rest.split("-");
   return { refName, start: +start, end: +end };
 }
 
-export function parseCigar(cigar) {
-  return (cigar || "").split(/([MIDNSHPX=])/);
+export function parseCigar(cigar = "") {
+  return cigar.split(/([MIDNSHPX=])/);
 }
 
 // because we are using use-query-params without a router
@@ -32,20 +32,20 @@ const initialFile =
   "https://s3.amazonaws.com/1000genomes/phase3/data/HG00096/alignment/HG00096.mapped.ILLUMINA.bwa.GBR.low_coverage.20120522.bam";
 
 function App() {
-  const ref = useRef();
-  const fileRef = useRef();
-  const snpcovref = useRef();
+  const ref = useRef<HTMLCanvasElement>(null);
+  const snpcovref = useRef<HTMLCanvasElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [params, setParams] = useQueryParams({
     loc: withDefault(StringParam, initialLoc),
     file: withDefault(StringParam, initialFile),
   });
-  const [readData, setReadData] = useState();
-  const [mpileupData, setMPileupData] = useState();
+  const [readData, setReadData] = useState<BamRecord[]>();
+  const [mpileupData, setMPileupData] = useState<number[]>();
   const [file, setFile] = useState(params.file);
   const [loc, setLoc] = useState(params.loc);
-  const [error, setError] = useState();
+  const [error, setError] = useState<Error>();
   const forceUpdate = useForceUpdate();
-  const [files, setFiles] = useState();
+  const [files, setFiles] = useState<FileList>();
 
   useEffect(() => {
     (async () => {
@@ -71,9 +71,9 @@ function App() {
       var records = await bam.getRecordsForRange(refName, start - 1, end);
       setReadData(records);
 
-      const vals = new Array(end - start).fill(0);
+      const vals: number[] = new Array(end - start).fill(0);
       records
-        .filter((f) => !(f.flags & 4) && !(f.flags & 256))
+        .filter((f) => !f.isSegmentUnmapped() && !f.isSecondary())
         .forEach((r) => {
           const s = r.get("start");
           const e = r.get("end");
@@ -87,7 +87,13 @@ function App() {
 
   // this block draws the rectangles
   useEffect(() => {
+    if (!ref.current) {
+      return;
+    }
     const ctx = ref.current.getContext("2d");
+    if (!ctx) {
+      return;
+    }
     ctx.clearRect(0, 0, width, height);
     const parsedLoc = parseLocString(params.loc);
     const bpPerPx = width / (parsedLoc.end - parsedLoc.start);
@@ -95,9 +101,8 @@ function App() {
     readData?.forEach((feature) => {
       const start = feature.get("start");
       const end = feature.get("end");
-      const flags = feature.flags;
 
-      if (flags & 16) {
+      if (feature.isReverseComplemented()) {
         ctx.fillStyle = "#99f";
       } else {
         ctx.fillStyle = "#f99";
@@ -106,16 +111,20 @@ function App() {
       const leftPx = (start - parsedLoc.start) * bpPerPx;
       const width = (end - start) * bpPerPx;
 
-      console.log(feature.get("name"), feature.id());
       const y = layout.addRect(feature.id(), start, end, featHeight);
 
       ctx.fillRect(leftPx, y, width, featHeight);
     });
   }, [readData, params.loc]);
 
-  // this block draws the rectangles
   useEffect(() => {
+    if (!snpcovref.current) {
+      return;
+    }
     const ctx = snpcovref.current.getContext("2d");
+    if (!ctx) {
+      return;
+    }
     ctx.clearRect(0, 0, width, snpcovheight);
     const parsedLoc = parseLocString(params.loc);
     const bpPerPx = width / (parsedLoc.end - parsedLoc.start);
@@ -145,15 +154,18 @@ function App() {
       </p>
       <form
         onSubmit={(event) => {
+          event.preventDefault();
           setParams({ file, loc });
-          if (fileRef.current.files.length) {
+          if (!fileRef.current) {
+            return;
+          }
+          if (fileRef.current.files?.length) {
             setFiles(fileRef.current.files);
           }
-          setMPileupData();
-          setReadData();
-          setError();
+          setMPileupData(undefined);
+          setReadData(undefined);
+          setError(undefined);
           forceUpdate();
-          event.preventDefault();
         }}
       >
         <label htmlFor="url">URL: </label>

@@ -36,21 +36,3 @@
     transform: rotate(360deg);
   }
 }
-.dots:after {
-  display: inline-block;
-  animation: $ellipsis 1.5s infinite;
-  content: ".";
-  width: 1em;
-  textalign: left;
-}
-@keyframes ellipsis {
-  0% {
-    content: ".";
-  }
-  33% {
-    content: "..";
-  }
-  66% {
-    content: "...";
-  }
-}
