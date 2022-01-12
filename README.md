@@ -2,7 +2,7 @@
 
 Demo using @gmod/bam to fetch features and render a simple pileup
 
-Compre to https://github.com/cmdcolin/aioli_demo
+Compare to https://github.com/cmdcolin/aioli_demo
 
 ![](img/1.png)
 
