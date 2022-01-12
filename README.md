@@ -4,6 +4,8 @@ Demo using @gmod/bam to fetch features and render a simple pileup
 
 Compare to https://github.com/cmdcolin/aioli_demo
 
+Note that it is a fair bit faster than the aioli demo because it just parses the plain binary instead of aioli where it parses the text output of the samtools view command essentially
+
 ![](img/1.png)
 
 Example
